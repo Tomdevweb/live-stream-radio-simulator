@@ -1,6 +1,7 @@
 <div>
-  <audio id="hero-radio" autoplay muted></audio>
+  <audio id="hero-radio" controls muted></audio>
 </div>
+
 <script>
   (async () => {
     let headers = new Headers();
@@ -17,6 +18,7 @@
     const secondsFromToday = date.getHours() * 3600 + date.getMinutes() * 60 + date.getSeconds();
 
     const totalAudiosDuration = audios.reduce((acc, audio) => acc + audio.durationInSeconds, 0);
+
     const currentGlobalSecond = secondsFromToday % totalAudiosDuration;
 
     let cumulative = 0;
@@ -42,14 +44,17 @@
 
     let currentIndex = audios.findIndex((audio) => audio.url === audioToPlay.url);
 
+    // 🔁 Quand une piste se termine, on passe à la suivante (boucle infinie)
     audioElement.addEventListener("ended", () => {
       currentIndex = (currentIndex + 1) % audios.length;
       const nextAudio = audios[currentIndex];
       audioElement.src = nextAudio.url;
+
       const artistName = document.getElementById("artist-name");
       if (artistName) {
         artistName.textContent = nextAudio.artist || "Artiste inconnu";
       }
+
       audioElement.load();
       audioElement.addEventListener(
         "loadedmetadata",
@@ -62,27 +67,41 @@
     });
 
     audioElement.addEventListener("loadedmetadata", () => {
-      audioElement.currentTime = startAt;
-      audioElement.play();
+      const waitUntilReady = setInterval(() => {
+        if (
+          !isNaN(audioElement.duration) &&
+          audioElement.duration >= startAt &&
+          audioElement.readyState >= 3
+        ) {
+          clearInterval(waitUntilReady);
+          audioElement.currentTime = startAt;
+          audioElement.play();
+        }
+      }, 300);
     });
 
+    // 🔊 Gestion bouton "Activer le live"
     const radioPlayer = document.getElementById("radio-player-container");
     const activateRadio = document.getElementById("activate-live");
-    activateRadio.addEventListener("click", () => {
-      audioElement.muted = false;
-      audioElement.play();
-      activateRadio.style.display = "none";
-      radioPlayer.style.display = "flex";
-    });
+    if (activateRadio) {
+      activateRadio.addEventListener("click", async () => {
+        try {
+          await audioElement.play();
+          audioElement.muted = false;
+          activateRadio.style.display = "none";
+          if (radioPlayer) radioPlayer.style.display = "flex";
+        } catch (err) {
+          console.warn("Impossible de lancer la lecture :", err);
+        }
+      });
+    }
 
+    // 🔊 Toggle mute avec un bouton custom
     const toggleButton = document.getElementById("activate-sound");
-    toggleButton.addEventListener("click", () => {
-      if (audioElement.muted) {
-        audioElement.muted = false;
-        audioElement.play();
-      } else {
-        audioElement.muted = true;
-      }
-    });
+    if (toggleButton) {
+      toggleButton.addEventListener("click", () => {
+        audioElement.muted = !audioElement.muted;
+      });
+    }
   })();
 </script>
