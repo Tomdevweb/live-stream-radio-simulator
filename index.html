@@ -80,23 +80,28 @@
       }, 300);
     });
 
-    // 🔊 Gestion bouton "Activer le live"
     const radioPlayer = document.getElementById("radio-player-container");
     const activateRadio = document.getElementById("activate-live");
+
     if (activateRadio) {
       activateRadio.addEventListener("click", async () => {
         try {
+          // fake play to Safari let us modify currentTime
           await audioElement.play();
+          audioElement.pause();
+
+          audioElement.currentTime = startAt;
+          await audioElement.play();
+
           audioElement.muted = false;
           activateRadio.style.display = "none";
           if (radioPlayer) radioPlayer.style.display = "flex";
         } catch (err) {
-          console.warn("Impossible de lancer la lecture :", err);
+          console.warn("Safari ne veut pas lancer l'audio :", err);
         }
       });
     }
 
-    // 🔊 Toggle mute avec un bouton custom
     const toggleButton = document.getElementById("activate-sound");
     if (toggleButton) {
       toggleButton.addEventListener("click", () => {
