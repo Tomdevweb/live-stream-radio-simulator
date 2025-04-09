@@ -1,0 +1,116 @@
+<div>
+  <audio id="hero-radio" controls muted></audio>
+</div>
+
+<script>
+  (async () => {
+    const headers = new Headers();
+    headers.append("Access-Control-Allow-Origin", "https://fn5r5boclg.preview.infomaniak.website");
+
+    const response = await fetch(
+      "https://fn5r5boclg.preview.infomaniak.website/public/radio/radio_audios_list.txt",
+      { headers }
+    );
+
+    const { audios } = await response.json();
+
+    const audioElement = document.getElementById("hero-radio");
+    const radioPlayer = document.getElementById("radio-player-container");
+    const activateRadio = document.getElementById("activate-live");
+    const toggleButton = document.getElementById("activate-sound");
+    const artistName = document.getElementById("artist-name");
+    const loader = document.getElementById("radio-loader");
+
+    let currentIndex = 0;
+    let audioToPlay = null;
+    let startAt = 0;
+
+    // 👇 Calcul anticipé de la musique et du point de départ
+    const date = new Date();
+    const secondsFromToday = date.getHours() * 3600 + date.getMinutes() * 60 + date.getSeconds();
+    const totalAudiosDuration = audios.reduce((acc, audio) => acc + audio.durationInSeconds, 0);
+    const currentGlobalSecond = secondsFromToday % totalAudiosDuration;
+
+    let cumulative = 0;
+    for (let i = 0; i < audios.length; i++) {
+      cumulative += audios[i].durationInSeconds;
+      if (cumulative > currentGlobalSecond) {
+        audioToPlay = audios[i];
+        startAt = audioToPlay.durationInSeconds - (cumulative - currentGlobalSecond);
+        currentIndex = i;
+        break;
+      }
+    }
+
+    if (artistName && audioToPlay) {
+      artistName.textContent = audioToPlay.artist || "Artiste inconnu";
+    }
+
+    // 🔁 Gestion des transitions
+    audioElement.addEventListener("ended", () => {
+      currentIndex = (currentIndex + 1) % audios.length;
+      const nextAudio = audios[currentIndex];
+      audioElement.src = nextAudio.url;
+
+      if (artistName) artistName.textContent = nextAudio.artist || "Artiste inconnu";
+
+      audioElement.load();
+      audioElement.addEventListener(
+        "loadedmetadata",
+        () => {
+          audioElement.currentTime = 0;
+          audioElement.play();
+        },
+        { once: true }
+      );
+    });
+
+    // 👇 Activation lecture
+    if (activateRadio) {
+      activateRadio.addEventListener("click", async () => {
+        try {
+          if (loader) loader.style.display = "block";
+
+          audioElement.src = audioToPlay.url;
+          audioElement.load();
+
+          const wait = setInterval(async () => {
+            if (
+              audioElement.readyState >= 3 &&
+              !isNaN(audioElement.duration) &&
+              audioElement.duration > startAt
+            ) {
+              clearInterval(wait);
+              try {
+                audioElement.currentTime = startAt;
+                await audioElement.play();
+                audioElement.muted = false;
+
+                if (loader) loader.style.display = "none";
+                if (activateRadio) activateRadio.style.display = "none";
+                if (radioPlayer) radioPlayer.style.display = "flex";
+              } catch (err) {
+                console.warn("Erreur play :", err);
+                if (loader) loader.style.display = "none";
+              }
+            }
+          }, 300);
+
+          // Nécessaire pour Safari iOS
+          await audioElement.play();
+          audioElement.pause();
+        } catch (err) {
+          console.warn("Erreur Safari :", err);
+          if (loader) loader.style.display = "none";
+        }
+      });
+    }
+
+    // 🔇 Bouton mute/unmute
+    if (toggleButton) {
+      toggleButton.addEventListener("click", () => {
+        audioElement.muted = !audioElement.muted;
+      });
+    }
+  })();
+</script>
