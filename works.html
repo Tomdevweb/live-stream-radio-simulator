@@ -1,10 +1,10 @@
 <div>
-  <audio id="hero-radio" controls muted></audio>
+  <audio id="hero-radio" muted></audio>
 </div>
 
 <script>
   (async () => {
-    const headers = new Headers();
+    let headers = new Headers();
     headers.append("Access-Control-Allow-Origin", "https://fn5r5boclg.preview.infomaniak.website");
 
     const response = await fetch(
@@ -14,46 +14,53 @@
 
     const { audios } = await response.json();
 
-    const audioElement = document.getElementById("hero-radio");
-    const radioPlayer = document.getElementById("radio-player-container");
-    const activateRadio = document.getElementById("activate-live");
-    const toggleButton = document.getElementById("activate-sound");
-    const artistName = document.getElementById("artist-name");
-    const loader = document.getElementById("radio-loader");
-
-    let currentIndex = 0;
-    let audioToPlay = null;
-    let startAt = 0;
-
-    // 👇 Calcul anticipé de la musique et du point de départ
     const date = new Date();
     const secondsFromToday = date.getHours() * 3600 + date.getMinutes() * 60 + date.getSeconds();
+
     const totalAudiosDuration = audios.reduce((acc, audio) => acc + audio.durationInSeconds, 0);
+
     const currentGlobalSecond = secondsFromToday % totalAudiosDuration;
 
     let cumulative = 0;
+    let audioToPlay;
+    let startAt = 0;
+
     for (let i = 0; i < audios.length; i++) {
       cumulative += audios[i].durationInSeconds;
       if (cumulative > currentGlobalSecond) {
         audioToPlay = audios[i];
-        startAt = audioToPlay.durationInSeconds - (cumulative - currentGlobalSecond);
-        currentIndex = i;
+        startAt = audios[i].durationInSeconds - (cumulative - currentGlobalSecond);
+        const artistName = document.getElementById("artist-name");
+        if (artistName) {
+          artistName.textContent = audioToPlay.artist || "Artiste inconnu";
+        }
         break;
       }
     }
 
-    if (artistName && audioToPlay) {
-      artistName.textContent = audioToPlay.artist || "Artiste inconnu";
-    }
+    const audioElement = document.getElementById("hero-radio");
+    audioElement.src = audioToPlay.url;
+    audioElement.load();
 
-    // 🔁 Gestion des transitions
+    const loader = document.getElementById("radio-loader");
+    const listenText = document.getElementById("link-text-live");
+
+    audioElement.addEventListener("playing", () => {
+      if (loader) loader.style.display = "none";
+    });
+
+    let currentIndex = audios.findIndex((audio) => audio.url === audioToPlay.url);
+
+    // 🔁 Quand une piste se termine, on passe à la suivante (boucle infinie)
     audioElement.addEventListener("ended", () => {
       currentIndex = (currentIndex + 1) % audios.length;
       const nextAudio = audios[currentIndex];
       audioElement.src = nextAudio.url;
 
-      if (artistName) artistName.textContent = nextAudio.artist || "Artiste inconnu";
-
+      const artistName = document.getElementById("artist-name");
+      if (artistName) {
+        artistName.textContent = nextAudio.artist || "Artiste inconnu";
+      }
       audioElement.load();
       audioElement.addEventListener(
         "loadedmetadata",
@@ -65,48 +72,47 @@
       );
     });
 
-    // 👇 Activation lecture
+    audioElement.addEventListener("loadedmetadata", () => {
+      const waitUntilReady = setInterval(() => {
+        if (
+          !isNaN(audioElement.duration) &&
+          audioElement.duration >= startAt &&
+          audioElement.readyState >= 3
+        ) {
+          clearInterval(waitUntilReady);
+
+          // Desktop ok
+          // Mobile : bug possible, donc workaround en lecture différée ci-dessous
+          if (!/Mobi|Android/i.test(navigator.userAgent)) {
+            audioElement.currentTime = startAt;
+            audioElement.play();
+          }
+        }
+      }, 300);
+    });
+
+    const radioPlayer = document.getElementById("radio-player-container");
+    const activateRadio = document.getElementById("activate-live");
+
     if (activateRadio) {
       activateRadio.addEventListener("click", async () => {
+        if (loader) loader.style.display = "flex";
+        if (listenText) listenText.style.display = "none";
         try {
-          if (loader) loader.style.display = "block";
-
-          audioElement.src = audioToPlay.url;
-          audioElement.load();
-
-          const wait = setInterval(async () => {
-            if (
-              audioElement.readyState >= 3 &&
-              !isNaN(audioElement.duration) &&
-              audioElement.duration > startAt
-            ) {
-              clearInterval(wait);
-              try {
-                audioElement.currentTime = startAt;
-                await audioElement.play();
-                audioElement.muted = false;
-
-                if (loader) loader.style.display = "none";
-                if (activateRadio) activateRadio.style.display = "none";
-                if (radioPlayer) radioPlayer.style.display = "flex";
-              } catch (err) {
-                console.warn("Erreur play :", err);
-                if (loader) loader.style.display = "none";
-              }
-            }
-          }, 300);
-
-          // Nécessaire pour Safari iOS
           await audioElement.play();
           audioElement.pause();
+          audioElement.currentTime = startAt;
+          await audioElement.play();
+          audioElement.muted = false;
+          activateRadio.style.display = "none";
+          if (radioPlayer) radioPlayer.style.display = "flex";
         } catch (err) {
-          console.warn("Erreur Safari :", err);
-          if (loader) loader.style.display = "none";
+          console.warn("Safari ne veut pas lancer l'audio :", err);
         }
       });
     }
 
-    // 🔇 Bouton mute/unmute
+    const toggleButton = document.getElementById("activate-sound");
     if (toggleButton) {
       toggleButton.addEventListener("click", () => {
         audioElement.muted = !audioElement.muted;
